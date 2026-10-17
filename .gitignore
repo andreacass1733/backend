@@ -1,7 +1,9 @@
+
 # Virtual Environment
 venv/
 ENV/
 env/
+.venv/
 
 # Python cache
 __pycache__/
@@ -10,15 +12,31 @@ __pycache__/
 
 # Environment variables
 .env
+.env.*
 
-# Datasets pesados de imagenes (entrenamiento offline)
+# Datasets pesados de imágenes (entrenamiento offline)
 dataset/
 dataset_original/
 pipelines/efficientnet/dataset/
 pipelines/efficientnet/dataset_original/
 pipelines/efficientnet/dataset_procesado/
 
-# Models & Outputs
+# Datasets y datos procesados de XGBoost
+XGBoost/dataset_clinico_limpio.xlsx
+XGBoost/dataset_hormonal_limpio.xlsx
+XGBoost/preprocesado/
+pipelines/xgboost/raw_data/
+pipelines/xgboost/processed_data/
+
+# Modelos entrenados y archivos auxiliares
+models/
+models_ia/*.keras
+models_ia/*.h5
+models_ia/*.json
+models_ia/*.pkl
+pipelines/xgboost/models/
+
+# Outputs e imágenes de prueba
 outputs/
 test_images/
 *.keras
