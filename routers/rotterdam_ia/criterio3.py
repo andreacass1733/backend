@@ -172,9 +172,23 @@ async def predecir(
             num_foliculos  = 0
 
 
-        # ── Paso 6b: Diagnóstico regido exclusivamente por EfficientNet-B0 ────
+        # ── Paso 6b: Corroboración clínica estricta de Criterios de Rotterdam ───
+        # En los Criterios de Rotterdam (2003 / 2023), el Criterio 3 (Morfología PCOM)
+        # requiere estrictamente la presencia demostrada de folículos antrales (>= 12).
+        # Si la imagen carece por completo de folículos (0 folículos o patrón 'sin_foliculos_visibles'),
+        # indica un falso positivo del clasificador de imagen ante estudios no ováricos (ej. embarazo / feto)
+        # o un plano no concluyente. NUNCA debe declararse como 'Cumple criterio' ni inducir Fenotipo SOP.
         if prob_sop >= 0.5:
-            resultado = "Cumple criterio"
+            if num_foliculos == 0 or info_foliculos.get("patron") == "sin_foliculos_visibles":
+                resultado = "No cumple criterio"
+                prob_sop = 0.05
+                prob_normal = 0.95
+                info_foliculos["descripcion"] = (
+                    "No cumple Criterio 3 de Rotterdam: No se identificaron folículos ováricos antrales "
+                    "en el plano ecográfico analizado (se requieren >= 12 folículos de 2-9 mm para morfología poliquística PCOM)."
+                )
+            else:
+                resultado = "Cumple criterio"
         else:
             resultado = "No cumple criterio"
 

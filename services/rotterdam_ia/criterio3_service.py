@@ -34,7 +34,17 @@ from services.auth import security_service
 # ══════════════════════════════════════════════════════════════════════════════
 
 # Rutas donde se buscará el modelo entrenado (en orden de prioridad)
+# Rutas base para localización resiliente de artefactos
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+MODELS_DIR = os.path.join(BASE_DIR, "models_ia")
+
 _RUTAS_MODELO = [
+    os.path.join(MODELS_DIR, "efficient", "best_fase1.keras"),
+    os.path.join(MODELS_DIR, "efficientnet", "best_fase1.keras"),
+    os.path.join(MODELS_DIR, "best_fase1.keras"),
+    os.path.join(MODELS_DIR, "best_multihead.keras"),
+    os.path.join(BASE_DIR, "models", "best_fase1.keras"),
+    "models_ia/efficient/best_fase1.keras",
     "models_ia/efficientnet/best_fase1.keras",
     "models_ia/best_fase1.keras",
     "models/best_fase1.keras",

@@ -18,6 +18,16 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 DB_SQLITE_PATH = os.path.join(BASE_DIR, "db", "audit_trail.db")
 
 
+def _es_uuid_valido(val: Any) -> bool:
+    if not val:
+        return False
+    try:
+        uuid.UUID(str(val))
+        return True
+    except (ValueError, TypeError, AttributeError):
+        return False
+
+
 def _get_connection():
     conn = sqlite3.connect(DB_SQLITE_PATH)
     conn.row_factory = sqlite3.Row
@@ -59,15 +69,26 @@ def crear_orden_medica(datos: OrdenMedicaCreate, medico_id: Optional[str] = None
     orden_id = str(uuid.uuid4())
 
     # 1. Recuperar información de la paciente
-    paciente_res = supabase.table("paciente").select("*").eq("id", datos.paciente_id).execute()
-    if not paciente_res.data or len(paciente_res.data) == 0:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=404, detail="Paciente no encontrada para emitir la orden médica.")
-    paciente_obj = paciente_res.data[0]
+    paciente_obj = None
+    try:
+        if _es_uuid_valido(datos.paciente_id):
+            paciente_res = supabase.table("paciente").select("*").eq("id", datos.paciente_id).execute()
+            if paciente_res.data and len(paciente_res.data) > 0:
+                paciente_obj = paciente_res.data[0]
+        if not paciente_obj:
+            paciente_res_ci = supabase.table("paciente").select("*").eq("ci", str(datos.paciente_id)).execute()
+            if paciente_res_ci.data and len(paciente_res_ci.data) > 0:
+                paciente_obj = paciente_res_ci.data[0]
+    except Exception:
+        pass
     
-    nombres_pac = [paciente_obj.get("nombre", ""), paciente_obj.get("primer_apellido", ""), paciente_obj.get("segundo_apellido", "")]
-    paciente_nombre = " ".join(p.strip() for p in nombres_pac if p and p.strip()) or "Paciente Registrada"
-    paciente_ci = str(paciente_obj.get("ci") or "")
+    if paciente_obj:
+        nombres_pac = [paciente_obj.get("nombre", ""), paciente_obj.get("primer_apellido", ""), paciente_obj.get("segundo_apellido", "")]
+        paciente_nombre = " ".join(p.strip() for p in nombres_pac if p and p.strip()) or "Paciente Registrada"
+        paciente_ci = str(paciente_obj.get("ci") or datos.paciente_id)
+    else:
+        paciente_nombre = "Paciente en Evaluación"
+        paciente_ci = str(datos.paciente_id or "S/C")
 
     # 2. Recuperar información del médico
     m_id = medico_id or datos.medico_id
@@ -273,15 +294,23 @@ def _formatear_orden_response(raw: Dict[str, Any]) -> OrdenMedicaResponse:
     # Resolver paciente
     pac_id = raw.get("paciente_id")
     paciente_nombre = "Paciente Registrada"
-    paciente_ci = ""
+    paciente_ci = str(pac_id or "")
     if pac_id:
         try:
-            p_res = supabase.table("paciente").select("nombre, primer_apellido, segundo_apellido, ci").eq("id", pac_id).execute()
-            if p_res.data and len(p_res.data) > 0:
-                p_obj = p_res.data[0]
-                nombres = [p_obj.get("nombre", ""), p_obj.get("primer_apellido", ""), p_obj.get("segundo_apellido", "")]
-                paciente_nombre = " ".join(n.strip() for n in nombres if n and n.strip())
-                paciente_ci = str(p_obj.get("ci") or "")
+            if _es_uuid_valido(pac_id):
+                p_res = supabase.table("paciente").select("nombre, primer_apellido, segundo_apellido, ci").eq("id", pac_id).execute()
+                if p_res.data and len(p_res.data) > 0:
+                    p_obj = p_res.data[0]
+                    nombres = [p_obj.get("nombre", ""), p_obj.get("primer_apellido", ""), p_obj.get("segundo_apellido", "")]
+                    paciente_nombre = " ".join(n.strip() for n in nombres if n and n.strip()) or paciente_nombre
+                    paciente_ci = str(p_obj.get("ci") or pac_id)
+            else:
+                p_res = supabase.table("paciente").select("nombre, primer_apellido, segundo_apellido, ci").eq("ci", str(pac_id)).execute()
+                if p_res.data and len(p_res.data) > 0:
+                    p_obj = p_res.data[0]
+                    nombres = [p_obj.get("nombre", ""), p_obj.get("primer_apellido", ""), p_obj.get("segundo_apellido", "")]
+                    paciente_nombre = " ".join(n.strip() for n in nombres if n and n.strip()) or paciente_nombre
+                    paciente_ci = str(p_obj.get("ci") or pac_id)
         except Exception:
             pass
 

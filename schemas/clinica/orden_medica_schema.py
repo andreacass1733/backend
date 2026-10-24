@@ -56,9 +56,9 @@ class OrdenMedicaCreate(BaseModel):
     @field_validator("indicacion_ecografia")
     @classmethod
     def validar_indicacion_ecografia(cls, v: Optional[str]) -> Optional[str]:
-        if v is not None and len(v.strip()) < 3:
+        if v is not None and v.strip() != "" and len(v.strip()) < 3:
             raise ValueError("La indicación ecográfica debe tener al menos 3 caracteres.")
-        return v
+        return v.strip() if v and v.strip() else None
 
 
 class OrdenMedicaResponse(BaseModel):

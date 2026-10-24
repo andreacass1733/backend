@@ -31,6 +31,8 @@ from tensorflow.keras.preprocessing import image as keras_image
 
 # Rutas donde se buscara el modelo entrenado
 RUTAS_MODELO = [
+    "models_ia/efficient/best_fase1.keras",
+    "models_ia/efficientnet/best_fase1.keras",
     "models_ia/best_fase1.keras",
     "models/best_fase1.keras",
 ]

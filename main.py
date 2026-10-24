@@ -116,6 +116,7 @@ async def verificar_autenticacion_medica(request: Request, call_next):
         or path.startswith("/auditoria")
         or path.startswith("/clinicos")
         or path.startswith("/hormonales")
+        or path.startswith("/ordenes-medicas")
         or path.startswith("/evaluacion/metricas-clinicas")
         or path.startswith("/criterio2/metricas-clinicas")
         or path.startswith("/outputs")

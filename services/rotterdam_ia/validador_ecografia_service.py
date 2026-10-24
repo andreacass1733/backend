@@ -119,16 +119,37 @@ def validar_ecografia_ovarica(img_bgr: np.ndarray) -> Tuple[bool, str, str, Dict
     
     for c in contornos_anecoicos:
         area_c = cv2.contourArea(c)
-        if area_c / area_roi > 0.58:
+        ratio_c = area_c / area_roi
+        # Cavidad anecoica masiva indiscutible (> 55% del campo util)
+        if ratio_c > 0.55:
             return (
                 False,
                 "PATRON_OBSTETRICO_FETAL",
                 (
                     "Estructura no compatible con ovario: Se detectó una cavidad anecoica desproporcionada "
-                    "compatible con líquido amniótico gestacional (ecografía obstétrica de feto) u otra región anatómica ajena a los ovarios."
+                    f"({ratio_c * 100:.1f}% del área útil) compatible con líquido amniótico gestacional "
+                    "(ecografía obstétrica de feto) u otra región anatómica ajena a los ovarios."
                 ),
-                {"area_cavidad_relativa": round((area_c / area_roi) * 100, 2)}
+                {"area_cavidad_relativa": round(ratio_c * 100, 2)}
             )
+        # Cavidad anecoica extensa (> 33% del área útil) corroborada con ausencia de arquitectura folicular ovárica
+        if ratio_c > 0.33:
+            try:
+                from services.rotterdam_ia.criterio3_service import _detectar_envoltorios_foliculares
+                env = _detectar_envoltorios_foliculares(gris_roi, prob_sop=0.8)
+                if len(env) == 0:
+                    return (
+                        False,
+                        "PATRON_OBSTETRICO_FETAL",
+                        (
+                            "Estructura no compatible con ovario: Se detectó una cavidad anecoica extensa "
+                            f"({ratio_c * 100:.1f}% del área) sin arquitectura folicular ovárica detectable, "
+                            "característica de líquido amniótico gestacional (ecografía obstétrica de embarazo)."
+                        ),
+                        {"area_cavidad_relativa": round(ratio_c * 100, 2), "foliculos_detectados": 0}
+                    )
+            except Exception:
+                pass
 
     return (
         True,
