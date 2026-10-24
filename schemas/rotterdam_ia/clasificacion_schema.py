@@ -14,7 +14,7 @@ from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 
-FENOTIPOS_VALIDOS = {"Fenotipo A", "Fenotipo B", "Fenotipo C", "Fenotipo D", "Sin SOP"}
+FENOTIPOS_VALIDOS = {"Fenotipo A", "Fenotipo B", "Fenotipo C", "Fenotipo D", "Sin SOP", "Evaluación Pendiente"}
 
 
 class ClasificacionRequest(BaseModel):

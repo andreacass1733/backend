@@ -194,12 +194,40 @@ async def predecir(
         elif "ruta_temp" in locals() and os.path.exists(ruta_temp):
             os.remove(ruta_temp)
 
-    # ── Paso 9: Devolver informe de evaluación preliminar al médico ─────────
-    draft_id = uuid.uuid4()
+    # ── Paso 9: Guardar estudio ecográfico preliminar en la base de datos ─────────
+    real_consulta_id = None
+    if paciente_id or consulta_id:
+        try:
+            real_consulta_id = obtener_o_crear_consulta_automatica(
+                paciente_id=str(paciente_id) if paciente_id else None,
+                consulta_id=str(consulta_id) if consulta_id else None
+            )
+        except Exception as e_c:
+            print("[WARN] Error obteniendo consulta en predecir:", e_c)
+
+    estudio_db = None
+    if real_consulta_id:
+        try:
+            estudio_db = guardar_estudio(
+                consulta_id=real_consulta_id,
+                imagen_url=imagen_url,
+                imagen_nombre=imagen_nombre,
+                prob_sop=prob_sop,
+                prob_normal=prob_normal,
+                resultado=resultado,
+                num_foliculos=num_foliculos,
+                lado_ovario=lado_ovario,
+                mapa_calor_url=mapa_calor_url
+            )
+        except Exception as e_g:
+            print("[WARN] Error guardando estudio preliminar en BD:", e_g)
+
+    draft_id = uuid.UUID(str(estudio_db["id"])) if (estudio_db and "id" in estudio_db) else uuid.uuid4()
+    consulta_uuid = uuid.UUID(str(real_consulta_id)) if real_consulta_id else (consulta_id if consulta_id else draft_id)
 
     return PrediccionResponse(
         id=draft_id,
-        consulta_id=consulta_id if consulta_id else draft_id,
+        consulta_id=consulta_uuid,
         imagen_url=imagen_url,
         imagen_nombre=imagen_nombre,
         prob_sop=prob_sop,
@@ -244,9 +272,27 @@ def listar_estudios(paciente_id: Optional[UUID] = None):
     opcionalmente filtrados por paciente, ordenados del más reciente al más antiguo.
     """
     try:
-        query = supabase.table(TABLA).select("*").order("created_at", desc=True)
         if paciente_id:
-            query = query.eq("paciente_id", str(paciente_id))
+            res_cons = (
+                supabase.table("consulta")
+                .select("id")
+                .eq("paciente_id", str(paciente_id))
+                .execute()
+            )
+            if not res_cons.data:
+                return []
+            c_ids = [c["id"] for c in res_cons.data]
+            datos = (
+                supabase.table(TABLA)
+                .select("*")
+                .in_("consulta_id", c_ids)
+                .order("created_at", desc=True)
+                .execute()
+                .data
+            )
+            return datos or []
+
+        query = supabase.table(TABLA).select("*").order("created_at", desc=True)
         datos = query.execute().data
         return datos or []
     except Exception as e:

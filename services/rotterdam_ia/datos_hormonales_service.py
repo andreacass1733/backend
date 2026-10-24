@@ -342,11 +342,19 @@ def obtener_ultimos_datos_hormonales_paciente(paciente_id: str) -> Optional[Dict
             .execute()
         )
         if resp_cons.data:
-            for c in resp_cons.data:
-                cid = c["id"]
-                dh = obtener_datos_hormonales(cid)
-                if dh:
-                    return dh
+            c_ids = [c["id"] for c in resp_cons.data]
+            resp_dh = (
+                supabase.table("datos_hormonales")
+                .select("*")
+                .in_("consulta_id", c_ids)
+                .order("created_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+            if resp_dh.data and len(resp_dh.data) > 0:
+                dh_row = resp_dh.data[0]
+                dh_row["semaforo"] = generar_semaforo_completo(dh_row)
+                return dh_row
     except Exception as e:
         print(f"[WARN] Error obteniendo últimos datos hormonales para paciente {paciente_id}:", e)
     return None

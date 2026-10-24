@@ -218,11 +218,17 @@ def obtener_ultimos_datos_clinicos_paciente(paciente_id: str) -> Optional[Dict[s
             .execute()
         )
         if resp_cons.data:
-            for c in resp_cons.data:
-                cid = c["id"]
-                dc = obtener_datos_clinicos(cid)
-                if dc:
-                    return dc
+            c_ids = [c["id"] for c in resp_cons.data]
+            resp_dc = (
+                supabase.table("datos_clinicos")
+                .select("*")
+                .in_("consulta_id", c_ids)
+                .order("created_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+            if resp_dc.data and len(resp_dc.data) > 0:
+                return resp_dc.data[0]
     except Exception as e:
         print(f"[WARN] Error obteniendo últimos datos clínicos para paciente {paciente_id}:", e)
     return None

@@ -779,7 +779,7 @@ def obtener_o_crear_consulta_automatica(
 
 
 def guardar_estudio(
-    consulta_id:       Optional[str],   # Opcional para pruebas sin BD completa
+    consulta_id:       Optional[str],
     imagen_url:        str,
     imagen_nombre:     str,
     prob_sop:          float,
@@ -792,51 +792,53 @@ def guardar_estudio(
     mapa_calor_url:    Optional[str] = None,
 ) -> dict:
     """
-    Inserta un nuevo registro en la tabla estudio_ecografico de Supabase.
-
-    Guarda el resultado completo del análisis con todos sus 16 campos:
-    probabilidades del modelo, clasificación (cumple/no cumple criterio),
-    conteo de folículos estimado, mapa de calor URL y versión del modelo.
+    Inserta o actualiza (UPSERT) un registro en la tabla estudio_ecografico de Supabase.
+    Evita colisiones por la restricción UNIQUE(consulta_id).
     """
     datos = {
         "imagen_url":     imagen_url,
         "imagen_nombre":  imagen_nombre,
-        "prob_sop":       round(prob_sop, 5),    # Guardar con 5 decimales de precisión
+        "prob_sop":       round(prob_sop, 5),
         "prob_normal":    round(prob_normal, 5),
         "resultado":      resultado,
-        "validado":       False,                  # Pendiente de validación médica
+        "validado":       False,
         "version_modelo": VERSION_MODELO,
         "num_foliculos":  num_foliculos if num_foliculos is not None else 0,
         "mapa_calor_url": mapa_calor_url,
+        "updated_at":     datetime.now(timezone.utc).isoformat(),
     }
 
-    # Solo incluir consulta_id si se proporciona (permite pruebas sin FK completa)
     if consulta_id and consulta_id != "None" and consulta_id.strip() != "":
         datos["consulta_id"] = consulta_id
+        # Si ya existe un estudio para esta consulta, actualizarlo (evitar 23505 duplicate key)
+        try:
+            res_exist = (
+                supabase.table("estudio_ecografico")
+                .select("id")
+                .eq("consulta_id", consulta_id)
+                .limit(1)
+                .execute()
+            )
+            if res_exist.data and len(res_exist.data) > 0:
+                exist_id = res_exist.data[0]["id"]
+                upd = (
+                    supabase.table("estudio_ecografico")
+                    .update(datos)
+                    .eq("id", exist_id)
+                    .execute()
+                )
+                if upd.data and len(upd.data) > 0:
+                    return upd.data[0]
+        except Exception as e_upd:
+            print("[WARN] Error verificando/actualizando estudio existente en guardar_estudio:", e_upd)
 
-    # Asignación diferenciada entre Ovario Izquierdo y Derecho si los campos existen
-    if num_foliculos_izq is not None:
-        datos["num_foliculos_izq"] = num_foliculos_izq
-    elif num_foliculos is not None and lado_ovario == "izquierdo":
-        datos["num_foliculos_izq"] = num_foliculos
-
-    if num_foliculos_der is not None:
-        datos["num_foliculos_der"] = num_foliculos_der
-    elif num_foliculos is not None and lado_ovario == "derecho":
-        datos["num_foliculos_der"] = num_foliculos
-
+    # Si no existía, insertar nuevo registro
     try:
         response = supabase.table("estudio_ecografico").insert(datos).execute()
         if response.data and len(response.data) > 0:
             return response.data[0]
     except Exception as e:
-        print("[WARN] Error insertando en tabla estudio_ecografico, intentando sin campos opcionales num_foliculos_izq/der:", e)
-        # Fallback si num_foliculos_izq/der no están en la tabla
-        datos.pop("num_foliculos_izq", None)
-        datos.pop("num_foliculos_der", None)
-        response = supabase.table("estudio_ecografico").insert(datos).execute()
-        if response.data and len(response.data) > 0:
-            return response.data[0]
+        print("[WARN] Error insertando estudio_ecografico:", e)
 
     return datos
 
@@ -858,12 +860,9 @@ def validar_estudio(
 ) -> dict:
     """
     Registra la evaluación médica definitiva en la base de datos de Supabase.
-
-    Solamente en este punto (cuando el médico evalúa y confirma el estudio):
-      1. Se crea la consulta médica real en la tabla 'consulta'.
-      2. Se inserta el registro oficial en la tabla 'estudio_ecografico'.
+    Asegura idempotencia y actualización limpia del registro ecográfico existente.
     """
-    # 1. Garantizar consulta médica real al momento de la evaluación
+    # 1. Obtener o crear consulta médica real
     real_consulta_id = None
     try:
         real_consulta_id = obtener_o_crear_consulta_automatica(
@@ -873,39 +872,66 @@ def validar_estudio(
     except Exception as e_cons:
         print("[WARN] Error al obtener o crear consulta médica:", e_cons)
 
-    # 2. Intentar actualizar si ya existía en BD por id
-    datos_update = {
+    datos_comunes = {
         "validado":           True,
         "etiqueta_real":      etiqueta_real,
         "observacion_medico": observacion,
+        "resultado":          resultado or ("Cumple criterio" if etiqueta_real == "SOP" else "No cumple criterio"),
+        "version_modelo":     VERSION_MODELO,
         "updated_at":         datetime.now(timezone.utc).isoformat(),
     }
-    try:
-        response = (
-            supabase.table("estudio_ecografico")
-            .update(datos_update)
-            .eq("id", estudio_id)
-            .execute()
-        )
-        if response.data and len(response.data) > 0:
-            return response.data[0]
-    except Exception:
-        pass
+    if imagen_url:
+        datos_comunes["imagen_url"] = imagen_url
+    if imagen_nombre:
+        datos_comunes["imagen_nombre"] = imagen_nombre
+    if prob_sop is not None:
+        datos_comunes["prob_sop"] = round(prob_sop, 5)
+    if prob_normal is not None:
+        datos_comunes["prob_normal"] = round(prob_normal, 5)
+    if num_foliculos is not None:
+        datos_comunes["num_foliculos"] = num_foliculos
+    if mapa_calor_url:
+        datos_comunes["mapa_calor_url"] = mapa_calor_url
 
-    # 3. Si no existía en BD (porque fue vista previa preliminar), INSERTAR oficialmente en Supabase:
-    datos_insert = {
-        "imagen_url":     imagen_url or "",
-        "imagen_nombre":  imagen_nombre or "",
-        "prob_sop":       round(prob_sop, 5) if prob_sop is not None else 0.0,
-        "prob_normal":    round(prob_normal, 5) if prob_normal is not None else 0.0,
-        "resultado":      resultado or ("Cumple criterio" if etiqueta_real == "SOP" else "No cumple criterio"),
-        "validado":       True,
-        "etiqueta_real":  etiqueta_real,
-        "observacion_medico": observacion,
-        "version_modelo": VERSION_MODELO,
-        "num_foliculos":  num_foliculos if num_foliculos is not None else 0,
-        "mapa_calor_url": mapa_calor_url,
-    }
+    # 2. Intentar actualizar por id de estudio si ya existía en BD
+    if estudio_id and estudio_id != "None" and estudio_id.strip() != "":
+        try:
+            response = (
+                supabase.table("estudio_ecografico")
+                .update(datos_comunes)
+                .eq("id", estudio_id)
+                .execute()
+            )
+            if response.data and len(response.data) > 0:
+                return response.data[0]
+        except Exception as e_id:
+            print("[WARN] Intento de actualización por estudio_id:", e_id)
+
+    # 3. Intentar actualizar por consulta_id existente para evitar colisión UNIQUE(consulta_id)
+    if real_consulta_id:
+        try:
+            res_cons_exist = (
+                supabase.table("estudio_ecografico")
+                .select("id")
+                .eq("consulta_id", real_consulta_id)
+                .limit(1)
+                .execute()
+            )
+            if res_cons_exist.data and len(res_cons_exist.data) > 0:
+                id_encontrado = res_cons_exist.data[0]["id"]
+                upd_resp = (
+                    supabase.table("estudio_ecografico")
+                    .update(datos_comunes)
+                    .eq("id", id_encontrado)
+                    .execute()
+                )
+                if upd_resp.data and len(upd_resp.data) > 0:
+                    return upd_resp.data[0]
+        except Exception as e_cons_upd:
+            print("[WARN] Intento de actualización por real_consulta_id:", e_cons_upd)
+
+    # 4. Si definitivamente no existía registro previo, insertar nuevo estudio
+    datos_insert = {**datos_comunes}
     if real_consulta_id:
         datos_insert["consulta_id"] = real_consulta_id
 
@@ -914,7 +940,7 @@ def validar_estudio(
         if response.data and len(response.data) > 0:
             return response.data[0]
     except Exception as e_ins:
-        print("[WARN] Error al insertar estudio ecográfico evaluado:", e_ins)
+        print("[WARN] Error insertando nuevo estudio ecográfico evaluado:", e_ins)
 
     return datos_insert
 

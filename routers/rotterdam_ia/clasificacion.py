@@ -31,7 +31,8 @@ def _obtener_recomendacion_fenotipo(fenotipo: str) -> str:
         "Fenotipo B": "SOP Clásico Anovulatorio. Priorizar inducción de ovulación o protección endometrial periódica con progestágenos más antiandrógenos sistémicos.",
         "Fenotipo C": "SOP Ovulatorio. Enfoque centrado en el control estético y metabólico del hiperandrogenismo (espironolactona, ciproterona o anticonceptivos). Menor riesgo de hiperplasia endometrial.",
         "Fenotipo D": "SOP No Hiperandrogénico. Mejor pronóstico metabólico. Enfoque terapéutico en regulación del ciclo menstrual y vigilancia ecográfica de la masa ovárica.",
-        "Sin SOP": "No cumple los criterios mínimos diagnósticos de Rotterdam (≥2 de 3 criterios). Continuar vigilancia clínica rutinaria y descartar otras etiologías."
+        "Sin SOP": "No cumple los criterios mínimos diagnósticos de Rotterdam (≥2 de 3 criterios). Continuar vigilancia clínica rutinaria y descartar otras etiologías.",
+        "Evaluación Pendiente": "Se requiere completar los estudios clínicos, perfil hormonal o ecografía ovárica pendientes para consolidar el diagnóstico definitivo según el Consenso de Rotterdam."
     }
     return recomendaciones.get(fenotipo, "Seguimiento médico individualizado según evolución clínica.")
 
@@ -92,103 +93,156 @@ def evaluar_clasificacion_rotterdam(payload: ClasificacionRequest):
 @router.get("/paciente/{paciente_id}", response_model=ClasificacionResponse)
 def obtener_clasificacion_paciente(paciente_id: str):
     """
-    Consulta automáticamente en Supabase el estado de los 3 criterios para la paciente
-    y devuelve el diagnóstico integrado del Fenotipo Rotterdam.
+    Consulta automáticamente en Supabase el estado real de los 3 criterios para la paciente
+    y devuelve el diagnóstico integrado del Fenotipo Rotterdam o el aviso de estudios pendientes.
     """
     try:
-        # Verificar paciente
-        res_pac = supabase.table("paciente").select("id").eq("id", paciente_id).execute()
+        # 1. Verificar existencia de paciente
+        res_pac = supabase.table("paciente").select("id, nombre, primer_apellido").eq("id", paciente_id).execute()
         if not res_pac.data:
             raise HTTPException(status_code=404, detail="Paciente no encontrada")
 
-        # 1. Criterio 1: Disfunción ovulatoria desde datos_clinicos o antecedentes
+        # 2. Obtener consultas médicas registradas de la paciente
+        res_cons = (
+            supabase.table("consulta")
+            .select("id")
+            .eq("paciente_id", paciente_id)
+            .order("created_at", desc=True)
+            .limit(10)
+            .execute()
+        )
+        consulta_ids = [c["id"] for c in res_cons.data] if res_cons.data else []
+
+        evaluado_c1 = False
         cumple_c1 = False
-        try:
-            res_clin = (
-                supabase.table("datos_clinicos")
-                .select("amenorrea, oligomenorrea, ciclos_irregulares, duracion_ciclo_dias")
-                .eq("paciente_id", paciente_id)
-                .order("created_at", desc=True)
-                .limit(1)
-                .execute()
-            )
-            if res_clin.data and len(res_clin.data) > 0:
-                c_data = res_clin.data[0]
-                duracion = c_data.get("duracion_ciclo_dias")
-                es_largo = duracion and float(duracion) > 35
-                cumple_c1 = bool(
-                    c_data.get("amenorrea") or
-                    c_data.get("oligomenorrea") or
-                    c_data.get("ciclos_irregulares") or
-                    es_largo
-                )
-        except Exception:
-            pass
-
-        # 2. Criterio 2: Hiperandrogenismo desde datos_clinicos o datos_hormonales
+        evaluado_c2 = False
         cumple_c2 = False
-        try:
-            # Clínico
-            res_clin_and = (
-                supabase.table("datos_clinicos")
-                .select("hirsutismo, score_ferriman_gallwey, acne, alopecia_androgenica")
-                .eq("paciente_id", paciente_id)
-                .order("created_at", desc=True)
-                .limit(1)
-                .execute()
-            )
-            if res_clin_and.data and len(res_clin_and.data) > 0:
-                and_data = res_clin_and.data[0]
-                score_fg = and_data.get("score_ferriman_gallwey")
-                cumple_c2 = bool(
-                    and_data.get("hirsutismo") or
-                    (score_fg and int(score_fg) >= 8) or
-                    and_data.get("acne") or
-                    and_data.get("alopecia_androgenica")
-                )
+        evaluado_c3 = False
+        cumple_c3 = False
 
-            # Bioquímico (si el clínico no fue positivo)
-            if not cumple_c2:
+        c_data = None
+        h_data = None
+        ant_data = None
+        e_data = None
+
+        if consulta_ids:
+            # Consultar últimos datos clínicos
+            try:
+                res_clin = (
+                    supabase.table("datos_clinicos")
+                    .select("*")
+                    .in_("consulta_id", consulta_ids)
+                    .order("created_at", desc=True)
+                    .limit(1)
+                    .execute()
+                )
+                if res_clin.data and len(res_clin.data) > 0:
+                    c_data = res_clin.data[0]
+            except Exception as e_c:
+                print("[WARN] Error consultando datos_clinicos:", e_c)
+
+            # Consultar últimos datos hormonales
+            try:
                 res_horm = (
                     supabase.table("datos_hormonales")
-                    .select("testosterona_total, dhea_s, androstenediona")
-                    .eq("paciente_id", paciente_id)
+                    .select("*")
+                    .in_("consulta_id", consulta_ids)
                     .order("created_at", desc=True)
                     .limit(1)
                     .execute()
                 )
                 if res_horm.data and len(res_horm.data) > 0:
                     h_data = res_horm.data[0]
-                    testo = h_data.get("testosterona_total")
-                    dhea = h_data.get("dhea_s")
-                    if (testo and float(testo) > 50.0) or (dhea and float(dhea) > 350.0):
-                        cumple_c2 = True
-        except Exception:
-            pass
+            except Exception as e_h:
+                print("[WARN] Error consultando datos_hormonales:", e_h)
 
-        # 3. Criterio 3: Morfología ecográfica desde analisis_ecografia o estudio_ecografico
-        cumple_c3 = False
+            # Consultar último estudio ecográfico
+            try:
+                res_eco = (
+                    supabase.table("estudio_ecografico")
+                    .select("*")
+                    .in_("consulta_id", consulta_ids)
+                    .order("created_at", desc=True)
+                    .limit(1)
+                    .execute()
+                )
+                if res_eco.data and len(res_eco.data) > 0:
+                    e_data = res_eco.data[0]
+            except Exception as e_eco:
+                print("[WARN] Error consultando estudio_ecografico:", e_eco)
+
+        # Consultar antecedentes ginecológicos
         try:
-            res_eco = (
-                supabase.table("analisis_ecografia")
-                .select("clasificacion_predicha, probabilidad_sop")
+            res_ant = (
+                supabase.table("antecedentes_medicos")
+                .select("*")
                 .eq("paciente_id", paciente_id)
-                .order("created_at", desc=True)
                 .limit(1)
                 .execute()
             )
-            if res_eco.data and len(res_eco.data) > 0:
-                e_data = res_eco.data[0]
-                pred = str(e_data.get("clasificacion_predicha") or "").lower()
-                prob = e_data.get("probabilidad_sop")
-                cumple_c3 = pred == "sop" or (prob is not None and float(prob) >= 0.5)
-        except Exception:
-            pass
+            if res_ant.data and len(res_ant.data) > 0:
+                ant_data = res_ant.data[0]
+        except Exception as e_a:
+            print("[WARN] Error consultando antecedente_ginecologico:", e_a)
+
+        # ── CRITERIO 1: Disfunción ovulatoria (Oligo/Anovulación) ──
+        if c_data or ant_data or h_data:
+            evaluado_c1 = True
+            duracion = None
+            if c_data and c_data.get("duracion_ciclo_dias") is not None and str(c_data.get("duracion_ciclo_dias")).strip() != "":
+                duracion = float(c_data["duracion_ciclo_dias"])
+            elif ant_data and ant_data.get("duracion_ciclo_habitual") is not None:
+                duracion = float(ant_data["duracion_ciclo_habitual"])
+
+            tipo_ant = str(ant_data.get("tipo_ciclo") or "").lower() if ant_data else ""
+            ant_irreg = "irregular" in tipo_ant or "amenorrea" in tipo_ant
+
+            c1_clin = bool(
+                (c_data and (c_data.get("amenorrea") or c_data.get("oligomenorrea") or c_data.get("ciclos_irregulares"))) or
+                (duracion and duracion > 35) or
+                ant_irreg
+            )
+            lh_fsh = float(h_data.get("relacion_lh_fsh") or 0) if h_data else 0.0
+            cumple_c1 = c1_clin or (lh_fsh >= 2.0)
+
+        # ── CRITERIO 2: Hiperandrogenismo clínico y/o bioquímico ──
+        if c_data or h_data:
+            evaluado_c2 = True
+            hirsutismo = bool(c_data.get("hirsutismo")) if c_data else False
+            score_fg = int(c_data.get("score_ferriman_gallwey") or 0) if c_data else 0
+            acne = bool(c_data.get("acne")) if c_data else False
+            alopecia = bool(c_data.get("alopecia_androgenica")) if c_data else False
+            cumple_c2_clin = hirsutismo or (score_fg >= 8) or acne or alopecia
+
+            testo = float(h_data.get("testosterona_total") or 0) if h_data else 0.0
+            dhea = float(h_data.get("dhea_s") or 0) if h_data else 0.0
+            andro = float(h_data.get("androstenediona") or 0) if h_data else 0.0
+            cumple_c2_bioq = (testo > 50.0) or (dhea > 350.0) or (andro > 2.7)
+
+            cumple_c2 = cumple_c2_clin or cumple_c2_bioq
+
+        # ── CRITERIO 3: Morfología ecográfica ovárica poliquística (PCOM) ──
+        if e_data:
+            evaluado_c3 = True
+            pred = str(e_data.get("resultado") or "").lower()
+            etiq = str(e_data.get("etiqueta_real") or "").upper()
+            prob = float(e_data.get("prob_sop") or 0)
+            foliculos = int(e_data.get("num_foliculos") or 0)
+
+            cumple_c3 = (
+                etiq == "SOP" or
+                "cumple criterio" in pred or
+                prob >= 0.5 or
+                foliculos >= 12
+            )
 
         resultado = clasificar_fenotipo_rotterdam(
             cumple_criterio1=cumple_c1,
             cumple_criterio2=cumple_c2,
-            cumple_criterio3=cumple_c3
+            cumple_criterio3=cumple_c3,
+            evaluado_criterio1=evaluado_c1,
+            evaluado_criterio2=evaluado_c2,
+            evaluado_criterio3=evaluado_c3
         )
 
         fenotipo = resultado["fenotipo"]
@@ -201,7 +255,7 @@ def obtener_clasificacion_paciente(paciente_id: str):
             total_criterios_cumplidos=resultado["total_criterios_cumplidos"],
             desglose_criterios=resultado["desglose_criterios"],
             recomendacion_terapeutica=recomendacion,
-            nivel_confianza="Alta (Consolidado Automático de Rotterdam)"
+            nivel_confianza="Alta (Consolidado Automático de Rotterdam 2003 / 2023)"
         )
 
     except HTTPException:
