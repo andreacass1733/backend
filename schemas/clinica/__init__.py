@@ -1,0 +1,1 @@
+"""Módulo clinica de schemas."""

@@ -43,6 +43,13 @@ test_images/
 *.h5
 *.onnx
 
+# Bases de datos locales temporales
+*.db
+*.sqlite
+*.sqlite3
+db/*.db
+db/*.sqlite
+
 # IDEs
 .vscode/
 .idea/

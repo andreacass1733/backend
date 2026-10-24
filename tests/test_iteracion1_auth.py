@@ -10,7 +10,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from dotenv import load_dotenv
 
 load_dotenv(".env")
-from services import auth_service
+from services.auth import auth_service
 
 EMAIL_TEST = "carla.casas2004@gmail.com"
 PWD_TEST = "Medico2026*"
