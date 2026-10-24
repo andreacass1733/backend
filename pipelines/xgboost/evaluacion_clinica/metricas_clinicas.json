@@ -1,0 +1,74 @@
+{
+  "timestamp_evaluacion": "2026-10-21T02:36:59.260741+00:00",
+  "modelo": {
+    "nombre": "XGBoost Clasificador Clínico — Rotterdam",
+    "algoritmo": "XGBClassifier (Extreme Gradient Boosting)",
+    "calibrador": "CalibratedClassifierCV (Platt Scaling - Sigmoid)",
+    "version": "1.0.0",
+    "criterio_evaluado": "Criterio Clínico Rotterdam (Hiperandrogenismo y Manifestaciones Somatométricas)"
+  },
+  "hiperparametros_optimos": {
+    "n_estimators": 120,
+    "max_depth": 3,
+    "learning_rate": 0.03,
+    "subsample": 0.85,
+    "colsample_bytree": 0.85,
+    "reg_alpha": 1.0,
+    "reg_lambda": 1.5,
+    "eval_metric": "logloss",
+    "balanceo": "SMOTE (50/50 balance en conjunto train)"
+  },
+  "metricas_test_set": {
+    "exactitud_accuracy": 0.8171,
+    "precision_ppv": 0.7727,
+    "sensibilidad_recall": 0.6296,
+    "especificidad": 0.9091,
+    "puntuacion_f1": 0.6939,
+    "area_roc_auc": 0.8276,
+    "average_precision_pr_auc": 0.7918,
+    "brier_score_base": 0.1415,
+    "brier_score_calibrado": 0.1397,
+    "mejora_brier_porcentaje": 1.32
+  },
+  "matriz_confusion": {
+    "verdaderos_negativos_tn": 50,
+    "falsos_positivos_fp": 5,
+    "falsos_negativos_fn": 10,
+    "verdaderos_positivos_tp": 17,
+    "total_muestras_test": 82
+  },
+  "validacion_cruzada_5fold": {
+    "accuracy_media": 0.8337,
+    "accuracy_desviacion": 0.02,
+    "f1_media": 0.725,
+    "f1_desviacion": 0.0352,
+    "roc_auc_media": 0.8615,
+    "roc_auc_desviacion": 0.0196,
+    "especificidad_media": 0.9121,
+    "sensibilidad_media": 0.6727
+  },
+  "importancia_caracteristicas": {
+    "score_signos_clinicos": 0.3126596510410309,
+    "riesgo_metabolico": 0.12467413395643234,
+    "hirsutismo": 0.1182544082403183,
+    "ganancia_peso": 0.09291048347949982,
+    "oscurecimiento_piel": 0.05944328010082245,
+    "relacion_cintura_cadera": 0.04215104132890701,
+    "acne": 0.038870058953762054,
+    "perdida_cabello": 0.036687228828668594,
+    "presion_sistolica": 0.03251294046640396,
+    "indice_adiposidad_central": 0.031708039343357086,
+    "cintura_cm": 0.029466427862644196,
+    "cadera_cm": 0.026511119678616524,
+    "presion_diastolica": 0.02479345165193081,
+    "presion_pulso": 0.02005198411643505,
+    "embarazada": 0.009305732324719429
+  },
+  "graficos": {
+    "matriz_confusion": "matriz_confusion_clinica.png",
+    "curva_roc": "curva_roc_clinica.png",
+    "importancia_caracteristicas": "importancia_caracteristicas_clinica.png",
+    "calibracion_probabilidades": "calibracion_probabilidades_clinica.png",
+    "curva_precision_recall": "curva_precision_recall_clinica.png"
+  }
+}

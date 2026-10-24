@@ -11,9 +11,9 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from dotenv import load_dotenv
 
 load_dotenv(".env")
-from services import paciente_service, cita_service
-from schemas.paciente_schema import PacienteCreate
-from schemas.cita_schema import CitaCreate, CitaUpdate
+from services.clinica import paciente_service, cita_service
+from schemas.clinica.paciente_schema import PacienteCreate
+from schemas.clinica.cita_schema import CitaCreate, CitaUpdate
 from fastapi import HTTPException
 
 
