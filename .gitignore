@@ -1,4 +1,3 @@
-
 # Virtual Environment
 venv/
 ENV/
@@ -14,7 +13,7 @@ __pycache__/
 .env
 .env.*
 
-# Datasets pesados de imágenes (entrenamiento offline)
+# Datasets pesados de imagenes (entrenamiento offline)
 dataset/
 dataset_original/
 pipelines/efficientnet/dataset/
@@ -28,20 +27,22 @@ XGBoost/preprocesado/
 pipelines/xgboost/raw_data/
 pipelines/xgboost/processed_data/
 
-# Modelos entrenados y archivos auxiliares
-models/
-models_ia/*.keras
-models_ia/*.h5
+# Modelos entrenados y archivos auxiliares temporales
+/models/
 models_ia/*.json
 models_ia/*.pkl
 pipelines/xgboost/models/
 
-# Outputs e imágenes de prueba
+# Outputs e imagenes de prueba
 outputs/
 test_images/
-*.keras
-*.h5
 *.onnx
+
+# NOTA: Modelos .keras y .h5 permitidos en git para el analizador de imagenes ecograficas (Criterio 3)
+!*.keras
+!models_ia/**/*.keras
+!models_ia/*.keras
+!pipelines/efficientnet/models/*.keras
 
 # Bases de datos locales temporales
 *.db
